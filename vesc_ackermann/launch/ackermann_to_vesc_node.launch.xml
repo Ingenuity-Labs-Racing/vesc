@@ -1,16 +1,48 @@
 <?xml version="1.0"?>
 <launch>
+
   <!-- Optionally launch in GDB, for debugging -->
   <arg name="debug" default="false" />
   <let name="launch_prefix" value="xterm -e gdb --args" if="$(var debug)" />
 
+  <!-- ── Tunable parameters (overridable from CLI or parent launch) ──────
+       Both erpm_ramp_rate and erpm_lpf_alpha can also be changed at
+       runtime without restarting the node:
+
+         ros2 param set /ackermann_to_vesc_node erpm_ramp_rate  80000.0
+         ros2 param set /ackermann_to_vesc_node erpm_lpf_alpha  0.05
+
+       erpm_ramp_rate  [ERPM/s]
+         Max ERPM change per second (ramp timer fires at 50 Hz).
+           150 000  aggressive (~0.2 s to full speed)
+            55 000  balanced   (~0.55 s)   ← default
+            30 000  gentle     (~1.0 s)
+
+       erpm_lpf_alpha  [0.0 – 1.0]
+         One-pole IIR coefficient applied to incoming speed commands.
+           0.01  heavy smoothing, slow response  ← default
+           0.05  moderate smoothing
+           1.0   no filtering (raw command passed through)
+  ───────────────────────────────────────────────────────────────────────-->
+  <arg name="erpm_ramp_rate"  default="55000.0" />
+  <arg name="erpm_lpf_alpha"  default="0.01" />
+
   <!-- Ackermann to VESC node -->
-  <node pkg="vesc_ackermann" exec="ackermann_to_vesc_node" name="ackermann_to_vesc_node" output="screen">
-    <param name="speed_to_erpm_gain" value="4614.0" /><!-- "4614.0"-->
-    <param name="speed_to_erpm_offset" value="0.0" /><!-- -->
-    <param name="steering_angle_to_servo_gain" value="-1.2135" /><!---0.876-->
-    <param name="steering_angle_to_servo_offset" value="0.5304" /><!-- 0.335-->
-    <param name="erpm_ramp_rate" value="55000.0" />
-    <param name="erpm_lpf_alpha" value="0.01" />
+  <node pkg="vesc_ackermann"
+        exec="ackermann_to_vesc_node"
+        name="ackermann_to_vesc_node"
+        output="screen">
+
+    <!-- Static conversion calibration -->
+    <param name="speed_to_erpm_gain"           value="4614.0" />
+    <param name="speed_to_erpm_offset"         value="0.0" />
+    <param name="steering_angle_to_servo_gain"   value="-1.2135" />
+    <param name="steering_angle_to_servo_offset" value="0.5304" />
+
+    <!-- Tunable: set here or override from CLI / parent launch -->
+    <param name="erpm_ramp_rate"  value="$(var erpm_ramp_rate)" />
+    <param name="erpm_lpf_alpha"  value="$(var erpm_lpf_alpha)" />
+
   </node>
+
 </launch>
