@@ -32,6 +32,7 @@
 #include <ackermann_msgs/msg/ackermann_drive_stamped.hpp>
 #include <std_msgs/msg/float64.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <numeric>
 #include <deque>
@@ -56,16 +57,20 @@ AckermannToVesc::AckermannToVesc(const rclcpp::NodeOptions & options)
 
   // steering moving average window size
   // at typical ackermann_cmd publish rate (~40-50Hz):
-  //   5  samples = ~0.1s of smoothing  (recommended start)
+  //   5  samples = ~0.1s of smoothing
   //   10 samples = ~0.2s of smoothing
   //   20 samples = ~0.4s of smoothing  (heavy, adds noticeable lag)
-  declare_parameter("servo_ma_window", 5);
+  declare_parameter("servo_ma_window", 1);
+
+  // motor speed (erpm) moving average window size
+  // same time-budget as steering at ~40-50Hz publish rate.
+  // set to 1 to disable smoothing (pass raw erpm through).
+  declare_parameter("erpm_ma_window", 1);
 
   get_parameter("speed_to_erpm_gain", speed_to_erpm_gain_);
   get_parameter("speed_to_erpm_offset", speed_to_erpm_offset_);
   get_parameter("steering_angle_to_servo_gain", steering_to_servo_gain_);
   get_parameter("steering_angle_to_servo_offset", steering_to_servo_offset_);
-  get_parameter("servo_ma_window", servo_ma_window_);
 
   // publishers
   erpm_pub_ = create_publisher<Float64>("commands/motor/speed", 10);
@@ -79,16 +84,32 @@ AckermannToVesc::AckermannToVesc(const rclcpp::NodeOptions & options)
 
 void AckermannToVesc::ackermannCmdCallback(const AckermannDriveStamped::SharedPtr cmd)
 {
-  // speed — unchanged, published directly
+  // re-read each cycle so racing-mode launches can override at runtime via `ros2 param set`
+  get_parameter("servo_ma_window", servo_ma_window_);
+  get_parameter("erpm_ma_window", erpm_ma_window_);
+  servo_ma_window_ = std::max(1, servo_ma_window_);
+  erpm_ma_window_ = std::max(1, erpm_ma_window_);
+
+  // speed — apply moving average before publishing
+  double raw_erpm = speed_to_erpm_gain_ * cmd->drive.speed + speed_to_erpm_offset_;
+
+  erpm_window_.push_back(raw_erpm);
+  // while (not if) so a runtime window shrink drains stale samples in one cycle
+  while (static_cast<int>(erpm_window_.size()) > erpm_ma_window_) {
+    erpm_window_.pop_front();
+  }
+  double erpm_sum = std::accumulate(erpm_window_.begin(), erpm_window_.end(), 0.0);
+  double filtered_erpm = erpm_sum / static_cast<double>(erpm_window_.size());
+
   Float64 erpm_msg;
-  erpm_msg.data = speed_to_erpm_gain_ * cmd->drive.speed + speed_to_erpm_offset_;
+  erpm_msg.data = filtered_erpm;
 
   // steering — apply moving average before publishing
   double raw_servo = steering_to_servo_gain_ * cmd->drive.steering_angle +
                      steering_to_servo_offset_;
 
   servo_window_.push_back(raw_servo);
-  if (static_cast<int>(servo_window_.size()) > servo_ma_window_) {
+  while (static_cast<int>(servo_window_.size()) > servo_ma_window_) {
     servo_window_.pop_front();
   }
   double servo_sum = std::accumulate(servo_window_.begin(), servo_window_.end(), 0.0);

@@ -55,6 +55,10 @@ private:
   int servo_ma_window_;                    // number of samples in window
   std::deque<double> servo_window_;        // rolling sample buffer
 
+  // motor speed (erpm) moving average
+  int erpm_ma_window_;                     // number of samples in window (1 = disabled)
+  std::deque<double> erpm_window_;         // rolling sample buffer
+
   /** @todo consider also providing an interpolated look-up table conversion */
 
   // ROS services
