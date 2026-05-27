@@ -25,7 +25,6 @@
 // CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
-
 // -*- mode:c++; fill-column: 100; -*-
 
 #ifndef VESC_ACKERMANN__ACKERMANN_TO_VESC_HPP_
@@ -34,6 +33,7 @@
 #include <ackermann_msgs/msg/ackermann_drive_stamped.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <std_msgs/msg/float64.hpp>
+#include <deque>
 
 namespace vesc_ackermann
 {
@@ -47,10 +47,13 @@ public:
   explicit AckermannToVesc(const rclcpp::NodeOptions & options);
 
 private:
-  // ROS parameters
   // conversion gain and offset
   double speed_to_erpm_gain_, speed_to_erpm_offset_;
   double steering_to_servo_gain_, steering_to_servo_offset_;
+
+  // steering moving average
+  int servo_ma_window_;                    // number of samples in window
+  std::deque<double> servo_window_;        // rolling sample buffer
 
   /** @todo consider also providing an interpolated look-up table conversion */
 
